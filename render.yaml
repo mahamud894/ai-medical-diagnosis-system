@@ -1,0 +1,23 @@
+# Render Blueprint — one free web service hosts both the API and the React site.
+# On Render: New → Blueprint → pick this repo, then fill in MONGODB_URI when asked.
+services:
+  - type: web
+    name: ai-medical-diagnosis-system
+    runtime: node
+    plan: free
+    buildCommand: npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "20"
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 1d
+      - key: MAX_UPLOAD_MB
+        value: "5"
