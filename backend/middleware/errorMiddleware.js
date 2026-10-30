@@ -1,11 +1,7 @@
-const fs = require('fs');
-
 function notFound(req, res) {
   res.status(404).json({ message: `Route not found: ${req.method} ${req.originalUrl}` });
 }
 function errorHandler(err, req, res, next) {
-  // Never leave an orphan upload on disk if the request failed.
-  if (req.file && req.file.path) fs.unlink(req.file.path, () => {});
   if (res.headersSent) return next(err);
 
   if (err.code === 11000) return res.status(409).json({ message: 'An account with this email already exists.' });

@@ -1,116 +1,114 @@
 # AI Based Medical Diagnosis System (Student Project)
 
-এই project-টি React + Node.js/Express + MongoDB Atlas দিয়ে তৈরি starter implementation। এটি তোমাদের Backend Progress Report-এর stack, folder structure এবং API ধারণা অনুসরণ করে।
+React + Node.js/Express + MongoDB Atlas দিয়ে তৈরি একটি educational web app। Patient profile রাখা যায়, একটি trained **Naive Bayes machine-learning model** দিয়ে symptom থেকে সম্ভাব্য ৩টি condition-এর ranking দেখা যায়, আর medical report (PDF/JPG/PNG) সংরক্ষণ করা যায়।
+
+> **Medical safety:** Model-টি একটি ছোট public dataset-এ train করা, clinically validated নয়, এবং কোনো রোগ নির্ণয় বা চিকিৎসা নির্দেশ করে না। Score শুধু dataset-এর ৪১টা condition-এর মধ্যে relative — এটা medical probability না। Emergency symptom (chest pain, শ্বাসকষ্ট ইত্যাদি) থাকলে app আলাদা warning দেখায়।
 
 ## Features
-- User registration/login (bcrypt password hash + JWT)
-- Patient profile create/list/update/delete (নিজের patient records)
-- Symptom-based educational demo prediction এবং diagnosis history
-- Medical report file upload/list (PDF/JPG/PNG; private local uploads folder)
-- Basic role field (`patient` / `admin`)
-- Responsive React dashboard
-
-> **Medical safety:** বর্তমান prediction engine হলো demo rule-based prototype; এটি clinically validated নয় এবং কোনো রোগ নির্ণয়/চিকিৎসা নির্দেশ করে না। বাস্তব চিকিৎসা সিদ্ধান্তের জন্য qualified clinician দরকার। রিপোর্ট upload করলে এই starter-এ OCR করা হয় না। Production-এ deploy করার আগে security, privacy, access control, audit, validation এবং clinical validation review জরুরি।
+- Register/login (bcrypt password hash + JWT), session expire হলে auto logout
+- Patient profile: নাম, বয়স, gender, notes — add / edit / delete / search
+- **AI symptom checker:** ১৩১টা symptom থেকে search করে বেছে নেওয়া, common symptom shortcut, top-3 condition + score bar + matched symptoms + description, emergency warning
+- Diagnosis history: patient অনুযায়ী filter, expand করে details, delete
+- Medical report upload (MongoDB-তে store হয়, তাই server restart-এও হারায় না), view, delete
+- Security: helmet (CSP সহ security headers), rate limiting, file content check (magic bytes), owner-only data access
+- Responsive design: desktop sidebar, mobile-এ bottom tab bar
+- Automated tests (`npm test`)
 
 ## 1. Requirements
-- Node.js LTS (Node 20+ recommended)
+- Node.js LTS (20+)
 - VS Code
-- MongoDB Atlas account OR local MongoDB
+- MongoDB Atlas account (অথবা local MongoDB)
 
-## 2. Setup
-1. ZIP extract করে `ai-medical-diagnosis-system` folder VS Code-এ open করো।
-2. Terminal-এ backend চালাও:
+## 2. Local setup
+1. Project folder VS Code-এ open করো।
+2. Backend:
    ```powershell
    cd backend
    npm install
    Copy-Item .env.example .env
    ```
-3. `backend/.env` খুলে `MONGODB_URI`-তে তোমার MongoDB connection string বসাও (`YOUR_DB_USER`, `YOUR_DB_PASSWORD`, `YOUR_CLUSTER` — তিনটাই বদলাতে হবে)। Local MongoDB হলে: `MONGODB_URI=mongodb://127.0.0.1:27017/medical_diagnosis`।
-   `JWT_SECRET`-এ লম্বা random secret দাও। বানাতে: `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`
-   Atlas হলে Network Access-এ নিজের IP allow করো এবং Database Access user তৈরি করো। Password-এ `@ : / ? # %` থাকলে URL-encode করতে হবে। Password/URI কাউকে share করো না।
-4. Backend চালাও:
-   ```powershell
-   npm run dev
-   ```
-   Test: `http://localhost:5000/api/health`
-5. আরেকটি VS Code terminal:
+3. `backend/.env`-এ `MONGODB_URI` আর `JWT_SECRET` বসাও।
+   - Atlas: `mongodb+srv://USER:PASSWORD@CLUSTER.mongodb.net/medical_diagnosis?retryWrites=true&w=majority`
+   - Local: `mongodb://127.0.0.1:27017/medical_diagnosis`
+   - Secret বানাতে: `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`
+   - Password-এ `@ : / ? # %` থাকলে URL-encode করতে হবে। Password কাউকে share করো না।
+4. `npm run dev` → `http://localhost:5000/api/health`
+5. আরেকটা terminal:
    ```powershell
    cd frontend
    npm install
    npm run dev
    ```
-6. Vite terminal-এ দেখানো local URL খুলবে (সাধারণত `http://localhost:5173`)। Frontend `/api` request গুলো Vite proxy দিয়ে backend-এ পাঠায়, তাই CORS সমস্যা হয় না। Backend-এর PORT বদলালে `frontend/.env`-এ `BACKEND_URL=http://localhost:<PORT>` দাও।
+6. `http://localhost:5173` খোলো। Frontend `/api` request Vite proxy দিয়ে backend-এ পাঠায়।
+
+## 3. AI model (viva-র জন্য গুরুত্বপূর্ণ)
+| বিষয় | তথ্য |
+|---|---|
+| Algorithm | Multinomial Naive Bayes, Laplace smoothing (α = 1) |
+| Dataset | Kaggle "Disease Prediction Using Machine Learning" — 4,920 rows, 41 conditions, 132 symptom columns (`backend/ml/data/SOURCE.md`) |
+| Training | `backend/ml/train.js` (pure JavaScript, কোনো Python লাগে না) → `backend/ml/model.json` |
+| Prediction | `backend/ml/predictor.js` — symptom/synonym বোঝে, top-3 ranking, red-flag symptom-এ urgent warning |
+| Accuracy (held-out 20%) | ২টা symptom: top-1 ৮২%, top-3 ৯৫.৮% · ৩টা symptom: top-1 ৯৪.১%, top-3 ৯৯% |
+
+কীভাবে কাজ করে: প্রতিটা condition *d*-এর জন্য score = log P(d) + Σ log P(symptom | d)। তারপর softmax দিয়ে ৪১টা condition-এর মধ্যে relative % বানানো হয়।
+
+Limitations (report-এ লিখবে): dataset ছোট ও খুব পরিষ্কার, তাই বাস্তবে accuracy অনেক কম হবে; মাত্র ৪১টা condition; বয়স/gender/সময়কাল/test result ব্যবহার হয় না।
+
+Model আবার train করতে: `cd backend` → `npm run train`
+
+## 4. Tests
+```powershell
+cd backend
+npm test
+```
+Predictor (accuracy, synonym, urgent flag) আর API (auth guard, validation, security headers) — database ছাড়াই চলে।
+
+## 5. API summary
+Protected route-এ `Authorization: Bearer <JWT_TOKEN>` লাগে।
+- `POST /api/auth/register` · `POST /api/auth/login` · `GET /api/auth/me`
+- `GET/POST /api/patients` · `GET/PUT/DELETE /api/patients/:id`
+- `GET /api/diagnosis/symptoms` (model-এর symptom list + model info)
+- `POST /api/diagnosis/predict` `{ patientId, symptoms: [] }`
+- `GET /api/diagnosis/history?patientId=` · `GET/DELETE /api/diagnosis/:id`
+- `POST /api/reports/upload` (multipart: `patientId`, `report`) · `GET /api/reports`
+- `GET /api/reports/:id/file` · `DELETE /api/reports/:id`
+- `GET /api/health`
+
+## 6. Project structure
+```text
+backend/
+  config/        env check, MongoDB connection
+  controllers/   auth, patients, diagnosis, reports
+  middleware/    JWT auth, error handler
+  ml/            train.js, predictor.js, model.json, data/
+  models/        User, Patient, Diagnosis, Report
+  routes/
+  test/          node:test tests
+  server.js
+frontend/src/
+  App.jsx        session, data, navigation
+  api.js         fetch helper
+  utils.js
+  components/ui.jsx
+  pages/         AuthPage, Overview, Patients, SymptomCheck, History, Reports
+  styles.css
+render.yaml      Render deploy config
+```
+
+## 7. Live deploy (Render)
+GitHub-এ push করলেই Render নিজে থেকে নতুন version deploy করে।
+- Render Environment: `MONGODB_URI`, `JWT_SECRET`, `NODE_ENV=production`, `NODE_VERSION=20`
+- Build: `npm run build` · Start: `npm start`
+- Atlas → Network Access-এ `0.0.0.0/0` লাগবে (Render-এর IP fixed না)
+- Free plan ১৫ মিনিট idle থাকলে ঘুমিয়ে যায় — demo-র আগে একবার site খুলে রাখো।
 
 ## Troubleshooting
 | সমস্যা | সমাধান |
 |---|---|
-| `Backend cannot start — fix backend/.env` | `.env` file নেই বা placeholder বদলানো হয়নি। Message-এ যা বলা আছে সেটা ঠিক করো। |
-| `querySrv ENOTFOUND` | Cluster address ভুল / internet নেই। |
-| `bad auth` / `Authentication failed` | Atlas user/password ভুল। |
-| `Server selection timed out` | Atlas Network Access-এ নিজের IP add করো। |
-| `ECONNREFUSED 127.0.0.1:27017` | Local MongoDB service চালু করো। |
-| Browser-এ "Cannot reach the backend server" | Backend terminal চালু আছে কিনা দেখো (`npm run dev`)। |
-| `Port 5000 is already in use` | আগের server বন্ধ করো বা PORT বদলাও। |
-
-## এই version-এ যা fix করা হয়েছে
-- `.env` না থাকলে/placeholder থাকলে পরিষ্কার error message; MongoDB connection error-এর কারণ ও সমাধান দেখায়; `.env` সবসময় `backend/` folder থেকে load হয়।
-- `JWT_SECRET` না থাকলে register/login "Internal server error" দিত — এখন development-এ temporary secret দিয়ে চলে (warning সহ)।
-- CORS: Vite proxy যোগ হয়েছে + development-এ যেকোনো localhost port allow — "Failed to fetch" সমস্যা ঠিক।
-- Logout করে অন্য account-এ login করলে আগের user-এর patient selected থাকত ও symptom check fail করত — ঠিক করা হয়েছে।
-- Token expire হলে dashboard আটকে থাকত — এখন automatically login page-এ ফিরে যায়।
-- README-তে থাকা `GET /api/patients/:id` route আসলে ছিল না — যোগ করা হয়েছে।
-- Patient delete করলে তার diagnosis history ও report file-ও delete হয় (আগে orphan থেকে যেত)।
-- ভুল patient ID দিয়ে upload করলে file disk-এ থেকে যেত — এখন মুছে যায়; file extension ও MIME type দুটোই check হয়।
-- Demo predictor-এ খুব ছোট/খালি symptom সব pattern-এর সাথে match করত — ঠিক করা হয়েছে; explanation-এ matched symptom দেখায়।
-- UI: patient ও report delete, report view, custom symptom যোগ, history-তে patient column, double-submit বন্ধ, same file আবার select করা যায়, 5 MB-এর বড় file আগেই আটকায়।
-
-## 3. API summary
-- `POST /api/auth/register`
-- `POST /api/auth/login`
-- `GET /api/auth/me` (Bearer token)
-- `GET/POST /api/patients`
-- `GET/PUT/DELETE /api/patients/:id`
-- `POST /api/diagnosis/predict`
-- `GET /api/diagnosis/history`
-- `GET /api/diagnosis/:id`
-- `POST /api/reports/upload` (multipart fields: `patientId`, `report`)
-- `GET /api/reports`
-- `GET /api/reports/:id/file` (নিজের report view/download)
-- `DELETE /api/reports/:id`
-- `GET /api/health`
-
-Protected requests use `Authorization: Bearer <JWT_TOKEN>`.
-
-## 4. Current AI status
-The prediction route currently uses a clearly labeled symptom-matching demo, not the `.sav` models inside the supplied Python/Streamlit ZIP. Those models need their exact input feature order and preprocessing to be verified, then can be served safely through a separate Python API. Do not assume a confidence score is medical certainty.
-
-## 5. Project structure
-```text
-backend/
-  config/db.js
-  config/env.js
-  controllers/
-  middleware/
-  models/
-  routes/
-  uploads/
-  utils/demoPredictor.js
-  server.js
-frontend/
-  src/App.jsx
-  src/api.js
-  src/main.jsx
-  src/styles.css
-```
-
-## 6. Live deploy (Render — free)
-এই repo-তে `render.yaml` আছে, তাই একটা web service-ই API + website দুটো চালায়।
-1. https://render.com-এ GitHub দিয়ে sign up করো।
-2. **New → Blueprint** → এই repo select করো → **Apply**।
-3. `MONGODB_URI` চাইলে তোমার Atlas connection string দাও (`.../medical_diagnosis?retryWrites=true&w=majority`)। `JWT_SECRET` Render নিজেই বানাবে।
-4. Atlas → **Network Access**-এ `0.0.0.0/0` allow থাকতে হবে (Render-এর IP fixed না)।
-5. Deploy শেষ হলে `https://<service-name>.onrender.com` link-এ site চলবে।
-
-Notes: Free plan-এ ১৫ মিনিট idle থাকলে service ঘুমিয়ে যায়, প্রথম request-এ ~৩০-৫০ সেকেন্ড লাগে। Free plan-এর disk স্থায়ী না, তাই upload করা report file redeploy/restart-এর পর মুছে যেতে পারে (database record থাকবে)।
-
-Local-এ production build test: root folder-এ `npm run build` তারপর `npm start` → `http://localhost:5000`।
+| `Backend cannot start — fix backend/.env` | `.env` নেই বা placeholder বদলানো হয়নি |
+| `querySrv ENOTFOUND` | Cluster address ভুল / internet নেই |
+| `bad auth` / `Authentication failed` | Atlas user/password ভুল |
+| `Server selection timed out` / IP whitelist | Atlas Network Access-এ IP (বা `0.0.0.0/0`) add করো |
+| `ECONNREFUSED 127.0.0.1:27017` | Local MongoDB service চালু করো |
+| "Cannot reach the backend server" | Backend চালু আছে কিনা দেখো |
+| পুরনো report "no longer available" | আগের version disk-এ রাখত — report আবার upload করো |

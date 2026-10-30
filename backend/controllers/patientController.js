@@ -14,6 +14,12 @@ function cleanSymptoms(list) {
 // Returns { data } or { error } so create and update share the same rules.
 function validate(body, partial) {
   const data = {};
+  if (body.name !== undefined || !partial) {
+    const name = String(body.name ?? '').trim().replace(/\s+/g, ' ');
+    if (!name) return { error: 'Enter the patient’s name or a nickname.' };
+    if (name.length > 80) return { error: 'Name must be 80 characters or fewer.' };
+    data.name = name;
+  }
   if (body.age !== undefined || !partial) {
     const age = Number(body.age);
     if (body.age === undefined || body.age === '' || body.age === null || !Number.isFinite(age) || age < 0 || age > 120) return { error: 'Enter a valid age (0–120).' };
@@ -69,8 +75,8 @@ exports.remove = async (req, res, next) => {
     if (!mongoose.isValidObjectId(req.params.id)) return badId(res);
     const p = await Patient.findOneAndDelete({ _id: req.params.id, userId: req.user._id });
     if (!p) return res.status(404).json({ message: 'Patient record not found.' });
-    const reports = await Report.find({ patientId: p._id, userId: req.user._id }).select('storedName');
-    reports.forEach(r => fs.unlink(path.join(uploadsDir, path.basename(r.storedName)), () => {}));
+    const legacy = await Report.find({ patientId: p._id, userId: req.user._id, storedName: { $exists: true, $ne: null } }).select('storedName');
+    legacy.forEach(r => fs.unlink(path.join(uploadsDir, path.basename(r.storedName)), () => {}));
     await Promise.all([
       Report.deleteMany({ patientId: p._id, userId: req.user._id }),
       Diagnosis.deleteMany({ patientId: p._id, userId: req.user._id })
